@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guarnera Family Tree</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garant:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Cormorant+SC:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #1a1008;
+    font-family: 'Cormorant Garant', Georgia, serif;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+    cursor: grab;
+  }
+  body.dragging { cursor: grabbing; }
+
+  /* Parchment texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      radial-gradient(ellipse at 20% 20%, rgba(180,120,40,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 80%, rgba(120,60,20,0.1) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  #header {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    padding: 18px 32px 14px;
+    background: linear-gradient(to bottom, rgba(15,8,2,0.97) 0%, rgba(15,8,2,0) 100%);
+    display: flex;
+    align-items: baseline;
+    gap: 20px;
+  }
+  #header h1 {
+    font-family: 'Cormorant SC', serif;
+    font-size: 26px;
+    font-weight: 600;
+    color: #e8c97a;
+    letter-spacing: 0.06em;
+  }
+  #header p {
+    font-size: 13px;
+    color: rgba(210,175,100,0.5);
+    font-style: italic;
+    font-weight: 300;
+  }
+
+  #controls {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .ctrl-btn {
+    width: 36px; height: 36px;
+    background: rgba(232,201,122,0.12);
+    border: 0.5px solid rgba(232,201,122,0.3);
+    border-radius: 6px;
+    color: #e8c97a;
+    font-size: 18px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.2s;
+    font-family: serif;
+  }
+  .ctrl-btn:hover { background: rgba(232,201,122,0.22); }
+
+  #hint {
+    position: fixed;
+    bottom: 24px;
+    left: 24px;
+    z-index: 100;
+    font-size: 12px;
+    color: rgba(210,175,100,0.35);
+    font-style: italic;
+    line-height: 1.7;
+  }
+
+  #legend {
+    position: fixed;
+    top: 70px;
+    right: 24px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .leg-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: rgba(210,175,100,0.45);
+    font-style: italic;
+  }
+  .leg-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  #canvas-wrap {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+  }
+
+  svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Node styles */
+  .node-group { cursor: pointer; }
+  .node-rect {
+    fill: #2a1a08;
+    stroke: rgba(180,130,50,0.4);
+    stroke-width: 0.5;
+    rx: 4;
+    transition: all 0.2s;
+  }
+  .node-group:hover .node-rect {
+    fill: #3a2510;
+    stroke: rgba(232,201,122,0.7);
+    stroke-width: 1;
+  }
+  .node-group.highlighted .node-rect {
+    fill: #3d2208;
+    stroke: #e8c97a;
+    stroke-width: 1.5;
+  }
+  .node-name {
+    fill: #e8d5a8;
+    font-family: 'Cormorant Garant', Georgia, serif;
+    font-size: 11.5px;
+    font-weight: 400;
+    text-anchor: middle;
+    dominant-baseline: central;
+    pointer-events: none;
+  }
+  .node-spouse {
+    fill: #e8d5a8;
+    font-family: 'Cormorant Garant', Georgia, serif;
+    font-size: 11.5px;
+    font-style: normal;
+    font-weight: 400;
+    text-anchor: middle;
+    dominant-baseline: central;
+    pointer-events: none;
+  }
+  .node-group.root-node .node-rect {
+    fill: #3d2000;
+    stroke: #e8c97a;
+    stroke-width: 1.5;
+  }
+  .node-group.root-node .node-name {
+    fill: #f5e4b0;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  /* Connectors */
+  .connector {
+    fill: none;
+    stroke: rgba(180,130,50,0.35);
+    stroke-width: 1;
+  }
+  .connector.highlighted {
+    stroke: rgba(232,201,122,0.75);
+    stroke-width: 1.5;
+  }
+
+  /* Generation labels */
+  .gen-label {
+    fill: rgba(180,130,50,0.2);
+    font-family: 'Cormorant SC', Georgia, serif;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-anchor: start;
+  }
+  .gen-line {
+    stroke: rgba(180,130,50,0.08);
+    stroke-width: 0.5;
+    stroke-dasharray: 3 6;
+  }
+
+  /* Tooltip */
+  #tooltip {
+    position: fixed;
+    z-index: 200;
+    background: rgba(20,10,2,0.96);
+    border: 0.5px solid rgba(232,201,122,0.5);
+    border-radius: 6px;
+    padding: 10px 14px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    max-width: 200px;
+  }
+  #tooltip.visible { opacity: 1; }
+  #tooltip .tt-name {
+    font-family: 'Cormorant SC', serif;
+    font-size: 13px;
+    color: #e8d5a8;
+    font-weight: 600;
+  }
+  #tooltip .tt-spouse {
+    font-size: 12px;
+    color: rgba(210,175,100,0.65);
+    font-style: italic;
+    margin-top: 3px;
+  }
+  #tooltip .tt-gen {
+    font-size: 10px;
+    color: rgba(180,130,50,0.5);
+    margin-top: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>The Guarnera Family</h1>
+  <p>Eight generations · Santi Guarnera & Anna Maria, roots</p>
+</div>
+
+<div id="legend">
+  <div class="leg-item"><div class="leg-dot" style="background:#e8c97a;border:1px solid #e8c97a"></div> Root ancestors</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#3a2510;border:0.5px solid rgba(180,130,50,0.5)"></div> Family members</div>
+</div>
+
+<div id="hint">
+  Drag to pan · Scroll to zoom · Click any name to highlight lineage
+</div>
+
+<div id="controls">
+  <button class="ctrl-btn" onclick="zoom(1.25)" title="Zoom in">+</button>
+  <button class="ctrl-btn" onclick="zoom(0.8)" title="Zoom out">−</button>
+  <button class="ctrl-btn" onclick="resetView()" title="Reset view" style="font-size:13px">⌂</button>
+</div>
+
+<div id="tooltip">
+  <div class="tt-name" id="tt-name"></div>
+  <div class="tt-spouse" id="tt-spouse"></div>
+  <div class="tt-gen" id="tt-gen"></div>
+</div>
+
+<div id="canvas-wrap">
+  <svg id="svg"></svg>
+</div>
+
+<script>
+const DATA = {
+  id:"g1", name:"Santi Guarnera", spouse:"Anna Maria (Guarnera)", gen:1,
+  children:[
+    { id:"g2", name:"Zeferino Guarnera", spouse:"Maria Grazia Savarino", gen:2,
+      children:[
+        { id:"g3a", name:"Giachino Guarnera", gen:3 },
+        { id:"g3b", name:"Antoinette Guarnera", gen:3 },
+        { id:"g3c", name:"Anna Maria Guarnera", gen:3 },
+        { id:"g3d", name:"Celedonia Guarnera", gen:3 },
+        { id:"g3e", name:"Antonino Guarnera", gen:3 },
+        { id:"g3f", name:"Guiseppa Guarnera", gen:3 },
+        { id:"g3g", name:"Josephina Guarnera", gen:3 },
+        { id:"g3h", name:"Marietta Guarnera", gen:3 },
+        { id:"g3i", name:"Santi Guarnera", spouse:'Nunzi "Nancy" Varvaro', gen:3,
+          children:[
+            { id:"g4a", name:"Grace Guarnera", spouse:"Michael Battiato", gen:4,
+              children:[
+                { id:"g5a", name:"Marietta Battiato", spouse:"Art Conklin", gen:5,
+                  children:[{ id:"g6a", name:"Art Conklin", gen:6 }]}
+              ]},
+            { id:"g4b", name:"Gertrude Guarnera", spouse:"Alfio Brunetti", gen:4,
+              children:[
+                { id:"g5b", name:"Alfio Brunetti", gen:5 },
+                { id:"g5c", name:"Gerald Brunetti", gen:5 }
+              ]},
+            { id:"g4c", name:"America Guarnera", gen:4 },
+            { id:"g4d", name:"Leonard Anthony Guarnera", spouse:"Anna De Palo", gen:4,
+              children:[
+                { id:"g5d", name:"Santi Guarnera", gen:5 },
+                { id:"g5e", name:"Anthony Guarnera", gen:5 },
+                { id:"g5f", name:"Leonard Guarnera", gen:5 }
+              ]},
+            { id:"g4e", name:'Giachino "Jack" Guarnera', spouse:"Gloria De Palo", gen:4,
+              children:[
+                { id:"g5g", name:"Jack Guarnera", spouse:"Laurie", gen:5,
+                  children:[{ id:"g6b", name:"Nicole Guarnera", gen:6 }]},
+                { id:"g5h", name:"Christopher Guarnera", gen:5 },
+                { id:"g5i", name:"Nancy Guarnera", spouse:"Robert Birmingham", gen:5,
+                  children:[
+                    { id:"g6c", name:"Jacqueline Birmingham", gen:6 },
+                    { id:"g6d", name:"Adam Birmingham", gen:6 }
+                  ]}
+              ]},
+            { id:"g4f", name:"Gloria Guarnera", spouse:"Nick Donatone", gen:4,
+              children:[
+                { id:"g5j", name:"Gloria Donatone", gen:5 },
+                { id:"g5k", name:"Loretta Donatone", gen:5 },
+                { id:"g5l", name:"Nick Donatone", gen:5 }
+              ]},
+            { id:"g4g", name:'Zefferino "Zeffery" Guarnera', spouse:'Vincenza "Vivian" Varvaro', gen:4,
+              children:[
+                { id:"g5m", name:"Anthony Santi Guarnera", spouse:"Dorothy Emily Hughes", gen:5,
+                  children:[
+                    { id:"g6e", name:"James Anthony Guarnera", spouse:"Katherine", gen:6,
+                      children:[{ id:"g7a", name:"Caitlyn Guarnera", gen:7 }]},
+                    { id:"g6f", name:"Gregory William Guarnera", gen:6 },
+                    { id:"g6g", name:"Robert Scott Guarnera", spouse:"Tina Hancock", gen:6,
+                      children:[
+                        { id:"g7b", name:"Jason Robert Guarnera", gen:7 },
+                        { id:"g7c", name:"Kelsey Elena Guarnera", spouse:"Matthew Glover", gen:7,
+                          children:[{ id:"g8a", name:"Jovie Lane Glover", gen:8 }]},
+                        { id:"g7d", name:"Lauren Emily Guarnera", gen:7 }
+                      ]},
+                    { id:"g6h", name:"David Lawrence Guarnera", gen:6,
+                      children:[{ id:"g7e", name:"Jack Hughes Guarnera", gen:7 }]},
+                    { id:"g6i", name:"Christopher Todd Guarnera", spouse:"Mary Crawford", gen:6,
+                      children:[
+                        { id:"g7f", name:"Brian Crawford", gen:7 },
+                        { id:"g7g", name:"Brendan Crawford", gen:7 },
+                        { id:"g7h", name:"Hope Francine Victoria Guarnera", gen:7 }
+                      ]},
+                    { id:"g6j", name:"Mark Edward Guarnera", spouse:"Melissa Swanson", gen:6,
+                      children:[
+                        { id:"g7i", name:"Gianna Doramarie Guarnera", gen:7 },
+                        { id:"g7j", name:"Ethan Santi Guarnera", gen:7 }
+                      ]}
+                  ]},
+                { id:"g5n", name:"Michael Guarnera", spouse:"Ruth Nitsch", gen:5,
+                  children:[
+                    { id:"g6k", name:"Patrice Eileen Guarnera", spouse:"William Henry Wahl", gen:6,
+                      children:[
+                        { id:"g7k", name:"Michael Joseph Wahl", gen:7 },
+                        { id:"g7l", name:"Kaitlyn Nicole Wahl", gen:7 },
+                        { id:"g7m", name:"Ryan Matthew Wahl", gen:7 },
+                        { id:"g7n", name:"Jennifer Ann Wahl", gen:7 }
+                      ]},
+                    { id:"g6l", name:"Thomas Joseph Guarnera", spouse:"Dawn Marie Della Rocca", gen:6,
+                      children:[
+                        { id:"g7o", name:"James Thomas Guarnera", gen:7 },
+                        { id:"g7p", name:"Valerie Nicole Guarnera", gen:7 },
+                        { id:"g7q", name:"Gabrielle Marie Guarnera", gen:7 }
+                      ]},
+                    { id:"g6m", name:"William Michael Guarnera", spouse:"Julie Marchione", gen:6,
+                      children:[
+                        { id:"g7r", name:"Kelly Jean Guarnera", gen:7 },
+                        { id:"g7s", name:"Annabella Rose Guarnera", gen:7 }
+                      ]},
+                    { id:"g6n", name:"James Paul Guarnera", spouse:"Cheryl Joy Orosz", gen:6,
+                      children:[{ id:"g7t", name:"Jake Alexander Guarnera", gen:7 }]},
+                    { id:"g6o", name:"Dianne Elizabeth Guarnera", spouse:"John Thomson III", gen:6 }
+                  ]},
+                { id:"g5o", name:"Leonard Richard Guarnera", spouse:"Laura Ferra", gen:5,
+                  children:[
+                    { id:"g6p", name:"Leonard Guarnera", spouse:"Jessica", gen:6,
+                      children:[{ id:"g7u", name:"Haley Guarnera", gen:7 }]},
+                    { id:"g6q", name:"Zeffery Guarnera", gen:6 }
+                  ]},
+                { id:"g5p", name:"Leonard Richard Guarnera", spouse:"Tanya", gen:5,
+                  children:[
+                    { id:"g6r", name:"Jennifer Guarnera", spouse:"Jonathan Havanick", gen:6,
+                      children:[
+                        { id:"g7v", name:"Michael M. Guarnera", gen:7 },
+                        { id:"g7w", name:"Kaylee Havanick", gen:7 },
+                        { id:"g7x", name:"Jonathan Havanick", gen:7 },
+                        { id:"g7y", name:"Tyler Havanick", gen:7 }
+                      ]},
+                    { id:"g6s", name:"Christina Guarnera", gen:6 }
+                  ]}
+              ]}
+          ]}
+      ]}
+  ]
+};
+
+const GEN_LABELS = ['','Roots','Generation II','Generation III','Generation IV',
+  'Generation V','Generation VI','Generation VII','Generation VIII'];
+
+// Layout constants
+const NODE_W = 148;
+const NODE_H_BASE = 36;
+const NODE_H_SPOUSE = 52;
+const H_GAP = 22;
+const V_GAP = 90;
+const PAD_TOP = 80;
+const PAD_LEFT = 60;
+
+// Compute subtree leaf count for layout
+function countLeaves(node) {
+  if (!node.children || node.children.length === 0) return 1;
+  return node.children.reduce((s, c) => s + countLeaves(c), 0);
+}
+
+// Assign x positions bottom-up, y by generation
+function layoutTree(node, x0, depth) {
+  const nodeH = node.spouse ? NODE_H_SPOUSE : NODE_H_BASE;
+  const leaves = countLeaves(node);
+  const totalW = leaves * NODE_W + (leaves - 1) * H_GAP;
+  node._x = x0 + totalW / 2;
+  node._y = PAD_TOP + (depth - 1) * V_GAP;
+  node._w = NODE_W;
+  node._h = nodeH;
+
+  if (node.children && node.children.length > 0) {
+    let cx = x0;
+    node.children.forEach(child => {
+      const childLeaves = countLeaves(child);
+      const childW = childLeaves * NODE_W + (childLeaves - 1) * H_GAP;
+      layoutTree(child, cx, depth + 1);
+      cx += childW + H_GAP;
+    });
+  }
+}
+
+// Collect all nodes and edges
+function collectAll(node, nodes, edges) {
+  nodes.push(node);
+  (node.children || []).forEach(child => {
+    edges.push({ from: node, to: child });
+    collectAll(child, nodes, edges);
+  });
+}
+
+layoutTree(DATA, PAD_LEFT, 1);
+
+const allNodes = [], allEdges = [];
+collectAll(DATA, allNodes, allEdges);
+
+// Find bounding box
+let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+allNodes.forEach(n => {
+  minX = Math.min(minX, n._x - n._w/2);
+  maxX = Math.max(maxX, n._x + n._w/2);
+  minY = Math.min(minY, n._y);
+  maxY = Math.max(maxY, n._y + n._h);
+});
+const treeW = maxX - minX + PAD_LEFT * 2;
+const treeH = maxY - minY + PAD_TOP * 2;
+
+// SVG setup
+const svg = document.getElementById('svg');
+const NS = 'http://www.w3.org/2000/svg';
+
+// Transform state
+let tx = 0, ty = 0, scale = 1;
+
+const g = document.createElementNS(NS, 'g');
+g.setAttribute('id', 'root-g');
+svg.appendChild(g);
+
+function applyTransform() {
+  g.setAttribute('transform', `translate(${tx},${ty}) scale(${scale})`);
+}
+
+// Initial fit
+function fitToScreen() {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const scaleX = vw / treeW;
+  const scaleY = vh / treeH;
+  scale = Math.min(scaleX, scaleY) * 0.92;
+  tx = (vw - treeW * scale) / 2;
+  ty = (vh - treeH * scale) / 2 + 20;
+  applyTransform();
+}
+
+// Generation guide lines
+const maxGen = 8;
+for (let g2 = 1; g2 <= maxGen; g2++) {
+  const y = PAD_TOP + (g2 - 1) * V_GAP - V_GAP * 0.45;
+  if (g2 > 1) {
+    const line = document.createElementNS(NS, 'line');
+    line.setAttribute('x1', minX - 60);
+    line.setAttribute('x2', maxX + 60);
+    line.setAttribute('y1', y);
+    line.setAttribute('y2', y);
+    line.setAttribute('class', 'gen-line');
+    g.appendChild(line);
+  }
+  const label = document.createElementNS(NS, 'text');
+  label.setAttribute('x', minX - 55);
+  label.setAttribute('y', PAD_TOP + (g2 - 1) * V_GAP + 6);
+  label.setAttribute('class', 'gen-label');
+  label.textContent = GEN_LABELS[g2] || '';
+  g.appendChild(label);
+}
+
+// Draw connectors
+const edgeGroup = document.createElementNS(NS, 'g');
+edgeGroup.setAttribute('id', 'edges');
+g.appendChild(edgeGroup);
+
+allEdges.forEach(edge => {
+  const { from, to } = edge;
+  const x1 = from._x, y1 = from._y + from._h;
+  const x2 = to._x,   y2 = to._y;
+  const my = (y1 + y2) / 2;
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', `M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`);
+  path.setAttribute('class', 'connector');
+  path.setAttribute('data-from', from.id);
+  path.setAttribute('data-to', to.id);
+  edgeGroup.appendChild(path);
+});
+
+// Draw nodes
+const nodeGroup = document.createElementNS(NS, 'g');
+nodeGroup.setAttribute('id', 'nodes');
+g.appendChild(nodeGroup);
+
+// Build ancestor map for highlight
+function getAncestors(nodeId, node, path) {
+  if (node.id === nodeId) return [...path, node.id];
+  for (const c of (node.children || [])) {
+    const result = getAncestors(nodeId, c, [...path, node.id]);
+    if (result) return result;
+  }
+  return null;
+}
+
+let highlightedPath = null;
+
+function clearHighlight() {
+  document.querySelectorAll('.node-group.highlighted').forEach(el => el.classList.remove('highlighted'));
+  document.querySelectorAll('.connector.highlighted').forEach(el => el.classList.remove('highlighted'));
+  highlightedPath = null;
+}
+
+function highlightNode(nodeId) {
+  if (highlightedPath && highlightedPath.includes(nodeId)) { clearHighlight(); return; }
+  clearHighlight();
+  const path = getAncestors(nodeId, DATA, []);
+  if (!path) return;
+  highlightedPath = path;
+  path.forEach(id => {
+    const el = document.getElementById('node-' + id);
+    if (el) el.classList.add('highlighted');
+  });
+  for (let i = 0; i < path.length - 1; i++) {
+    const edge = document.querySelector(`.connector[data-from="${path[i]}"][data-to="${path[i+1]}"]`);
+    if (edge) edge.classList.add('highlighted');
+  }
+}
+
+allNodes.forEach(node => {
+  const grp = document.createElementNS(NS, 'g');
+  grp.setAttribute('class', 'node-group' + (node.gen === 1 ? ' root-node' : ''));
+  grp.setAttribute('id', 'node-' + node.id);
+
+  const rect = document.createElementNS(NS, 'rect');
+  rect.setAttribute('x', node._x - node._w / 2);
+  rect.setAttribute('y', node._y);
+  rect.setAttribute('width', node._w);
+  rect.setAttribute('height', node._h);
+  rect.setAttribute('rx', '4');
+  rect.setAttribute('class', 'node-rect');
+
+  // Subtle top accent line for root
+  if (node.gen === 1) {
+    const accent = document.createElementNS(NS, 'line');
+    accent.setAttribute('x1', node._x - node._w/2 + 8);
+    accent.setAttribute('x2', node._x + node._w/2 - 8);
+    accent.setAttribute('y1', node._y);
+    accent.setAttribute('y2', node._y);
+    accent.setAttribute('stroke', '#e8c97a');
+    accent.setAttribute('stroke-width', '1.5');
+    grp.appendChild(rect);
+    grp.appendChild(accent);
+  } else {
+    grp.appendChild(rect);
+  }
+
+  const nameY = node.spouse ? node._y + node._h * 0.35 : node._y + node._h / 2;
+  const nameEl = document.createElementNS(NS, 'text');
+  nameEl.setAttribute('x', node._x);
+  nameEl.setAttribute('y', nameY);
+  nameEl.setAttribute('class', 'node-name');
+  // Truncate long names
+  const displayName = node.name.length > 22 ? node.name.slice(0, 21) + '…' : node.name;
+  nameEl.textContent = displayName;
+  grp.appendChild(nameEl);
+
+  if (node.spouse) {
+    const spouseEl = document.createElementNS(NS, 'text');
+    spouseEl.setAttribute('x', node._x);
+    spouseEl.setAttribute('y', node._y + node._h * 0.68);
+    spouseEl.setAttribute('class', 'node-spouse');
+    const displaySpouse = node.spouse.length > 24 ? node.spouse.slice(0, 23) + '…' : node.spouse;
+    spouseEl.textContent = '& ' + displaySpouse;
+    grp.appendChild(spouseEl);
+  }
+
+  grp.addEventListener('click', e => {
+    e.stopPropagation();
+    highlightNode(node.id);
+  });
+
+  const tooltip = document.getElementById('tooltip');
+  grp.addEventListener('mouseenter', e => {
+    document.getElementById('tt-name').textContent = node.name;
+    document.getElementById('tt-spouse').textContent = node.spouse ? '& ' + node.spouse : '';
+    document.getElementById('tt-gen').textContent = GEN_LABELS[node.gen] || '';
+    tooltip.classList.add('visible');
+  });
+  grp.addEventListener('mousemove', e => {
+    tooltip.style.left = (e.clientX + 14) + 'px';
+    tooltip.style.top  = (e.clientY - 10) + 'px';
+  });
+  grp.addEventListener('mouseleave', () => tooltip.classList.remove('visible'));
+
+  nodeGroup.appendChild(grp);
+});
+
+svg.addEventListener('click', clearHighlight);
+
+// Pan & zoom
+let dragging = false, dragX = 0, dragY = 0;
+svg.addEventListener('mousedown', e => {
+  dragging = true; dragX = e.clientX; dragY = e.clientY;
+  document.body.classList.add('dragging');
+});
+window.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  tx += e.clientX - dragX; ty += e.clientY - dragY;
+  dragX = e.clientX; dragY = e.clientY;
+  applyTransform();
+});
+window.addEventListener('mouseup', () => { dragging = false; document.body.classList.remove('dragging'); });
+
+svg.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.1 : 0.91;
+  const rect = svg.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  tx = mx - (mx - tx) * factor;
+  ty = my - (my - ty) * factor;
+  scale *= factor;
+  applyTransform();
+}, { passive: false });
+
+function zoom(factor) {
+  const cx = window.innerWidth / 2, cy = window.innerHeight / 2;
+  tx = cx - (cx - tx) * factor;
+  ty = cy - (cy - ty) * factor;
+  scale *= factor;
+  applyTransform();
+}
+
+function resetView() { fitToScreen(); }
+
+fitToScreen();
+window.addEventListener('resize', fitToScreen);
+</script>
+</body>
+</html>
